@@ -1,0 +1,15 @@
+name:                evolution-simulator
+version:             0.1.0.0
+license:             AGPL-3
+
+dependencies:
+- base >= 4.7 && < 5
+- lens
+
+default-extensions:
+- RankNTypes
+- TemplateHaskell
+- FlexibleContexts
+
+library:
+  source-dirs: src
