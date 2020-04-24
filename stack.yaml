@@ -3,7 +3,11 @@ resolver: lts-13.19
 packages:
 - .
 
-# extra-deps: []
+extra-deps:
+- total-map-0.1.3@sha256:081b917276323564e6d6ebaaf20c14d8ffc0a260cf3f29113c2577f774a272f1,983
+- semiring-num-1.6.0.4@sha256:ea73b7ec4980add625dedfe159dbeea9a37aa540a2a9df0f36263455b1654cc1,2943
+
+
 
 ghc-options:
   "$locals": -fwarn-incomplete-patterns -fwarn-unused-imports
