@@ -12,7 +12,12 @@ import qualified Data.TotalMap as M
 data Gene = Photosynthesiser
   deriving (Eq, Ord, Show)
 
-type DNA = TMap Gene Bool
+data DNA = DNA
+  { _properties :: TMap Gene Bool
+  , _membraneDiffusion :: Double
+  }
+  deriving Show
+makeLenses ''DNA
 
 data Cell = Cell
   { _dna :: DNA
@@ -47,17 +52,23 @@ exampleWorld w h = World
   }
 
 printPoint :: Point -> Char
-printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key Energy))
+printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key A))
 
 printWorld :: World -> String
 printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
 
 emptyDNA :: DNA
-emptyDNA = M.empty False
+emptyDNA = DNA (M.empty False) diffusionRate
+
+basicRespirator :: Cell
+basicRespirator = Cell (set membraneDiffusion 0.001 emptyDNA)
+
+basicPhotosynthesiser :: Cell
+basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.002)
 
 initialPoint :: Int -> Int -> Point
-initialPoint 4 7 = set cell (Just (Cell emptyDNA)) emptyPoint
-initialPoint 3 8 = set cell (Just (Cell (M.insert Photosynthesiser True emptyDNA))) emptyPoint
+initialPoint 4 7 = set cell (Just basicRespirator) emptyPoint
+initialPoint 3 8 = set cell (Just basicPhotosynthesiser) emptyPoint
 initialPoint x y = set (quantities.key B) 5 emptyPoint
 
 emptyPoint = Point
@@ -72,7 +83,7 @@ key k = lens (M.! k) (flip (M.insert k))
 -- respiration: A -> B + energy
 respiration :: Point -> Point
 respiration p
-  | p^.quantities.key A >= 1 && ((p^?cell._Just.dna.key Photosynthesiser) == Just False)
+  | p^.quantities.key A >= 1 && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just False)
   = over (quantities.key B) (+1) $
     over (quantities.key A) (subtract 1) $
     over (quantities.key Energy) (+2) $
@@ -85,7 +96,7 @@ photosynthesisRate = 1.5
 -- photosynthesis: A + light (implicit) -> B
 photosynthesis :: Point -> Point
 photosynthesis p
-  | p^.quantities.key B >= photosynthesisRate && ((p^?cell._Just.dna.key Photosynthesiser) == Just True)
+  | p^.quantities.key B >= photosynthesisRate && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just True)
   = over (quantities.key A) (+photosynthesisRate) $
     over (quantities.key B) (subtract photosynthesisRate) $
     p
@@ -97,13 +108,19 @@ diffusionRate = 0.01
 diffusion :: World -> (Int, Int) -> Point -> Point
 diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff c)) [minBound..maxBound]) p
   where
+    dr00 :: Double
+    dr00 = case p^.cell of
+      Nothing -> diffusionRate
+      Just c -> c^.dna.membraneDiffusion
+
     diff :: Quantity -> Double -> Double
     diff c = subtract
-      (diffusionRate * sum
-        [factor dx dy * (c00 - fromMaybe c00 (w^?grid.ix (x+dx, y+dy).quantities.key c))
+      (sum [dr (x+dx) (y+dy) * factor dx dy * (c00 - fromMaybe c00 (w^?grid.ix (x+dx, y+dy).quantities.key c))
         | dx <- [-1..1], dy <- [-1..1]])
       where
+
         c00 = p^.quantities.key c
+        dr x y = min dr00 (fromMaybe diffusionRate (w^?grid.ix (x, y).cell._Just.dna.membraneDiffusion))
     factor x y | abs x == abs y = 1 / sqrt 2
                | otherwise = 1
 
