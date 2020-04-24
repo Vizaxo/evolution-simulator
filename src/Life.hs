@@ -9,8 +9,10 @@ import Data.Maybe
 import Data.TotalMap (TMap)
 import qualified Data.TotalMap as M
 
-data DNA = DNA
-  deriving Show
+data Gene = Photosynthesiser
+  deriving (Eq, Ord, Show)
+
+type DNA = TMap Gene Bool
 
 data Cell = Cell
   { _dna :: DNA
@@ -50,9 +52,13 @@ printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key Energy))
 printWorld :: World -> String
 printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
 
+emptyDNA :: DNA
+emptyDNA = M.empty False
+
 initialPoint :: Int -> Int -> Point
-initialPoint 5 6 = emptyPoint {_cell = Just (Cell DNA)}
-initialPoint x y = set (quantities.key A) 9 emptyPoint
+initialPoint 4 7 = set cell (Just (Cell emptyDNA)) emptyPoint
+initialPoint 3 8 = set cell (Just (Cell (M.insert Photosynthesiser True emptyDNA))) emptyPoint
+initialPoint x y = set (quantities.key B) 5 emptyPoint
 
 emptyPoint = Point
   { _quantities = M.empty 0
@@ -66,10 +72,22 @@ key k = lens (M.! k) (flip (M.insert k))
 -- respiration: A -> B + energy
 respiration :: Point -> Point
 respiration p
-  | p^.quantities.key A >= 1 && isJust (p^.cell)
+  | p^.quantities.key A >= 1 && ((p^?cell._Just.dna.key Photosynthesiser) == Just False)
   = over (quantities.key B) (+1) $
     over (quantities.key A) (subtract 1) $
     over (quantities.key Energy) (+2) $
+    p
+  | otherwise = p
+
+photosynthesisRate :: Double
+photosynthesisRate = 1.5
+
+-- photosynthesis: A + light (implicit) -> B
+photosynthesis :: Point -> Point
+photosynthesis p
+  | p^.quantities.key B >= photosynthesisRate && ((p^?cell._Just.dna.key Photosynthesiser) == Just True)
+  = over (quantities.key A) (+photosynthesisRate) $
+    over (quantities.key B) (subtract photosynthesisRate) $
     p
   | otherwise = p
 
@@ -90,7 +108,7 @@ diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff
                | otherwise = 1
 
 simPoint :: Point -> Point
-simPoint = respiration
+simPoint = photosynthesis . respiration
 
 mapWithIndex :: Ix i => (i -> e -> e) -> Array i e -> Array i e
 mapWithIndex f a = array (bounds a) [(i, f i (a!i)) | i <- indices a]
@@ -103,4 +121,4 @@ loop w = void $ flip runStateT w $ forever $ do
   w <- get
   modify simulate
   liftIO $ putStrLn (printWorld w)
-  liftIO $ threadDelay 200000
+  liftIO $ threadDelay 100000
