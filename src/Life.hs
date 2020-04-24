@@ -9,6 +9,10 @@ import Data.Maybe
 import Data.TotalMap (TMap)
 import qualified Data.TotalMap as M
 
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
+
 data Gene = Photosynthesiser
   deriving (Eq, Ord, Show)
 
@@ -43,42 +47,19 @@ data World = World
   deriving Show
 makeLenses ''World
 
-exampleWorld :: Int -> Int -> World
-exampleWorld w h = World
-  { _width = w
-  , _height = h
-  , _grid = array ((0,0),(w-1, h-1))
-            [((x,y), initialPoint x y) | x <- [0..w-1], y <-[0..h-1]]
-  }
+--------------------------------------------------------------------------------
+-- Constants
+--------------------------------------------------------------------------------
 
-printPoint :: Point -> Char
-printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key A))
+photosynthesisRate :: Double
+photosynthesisRate = 1.5
 
-printWorld :: World -> String
-printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
+diffusionRate :: Double
+diffusionRate = 0.01
 
-emptyDNA :: DNA
-emptyDNA = DNA (M.empty False) diffusionRate
-
-basicRespirator :: Cell
-basicRespirator = Cell (set membraneDiffusion 0.001 emptyDNA)
-
-basicPhotosynthesiser :: Cell
-basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.002)
-
-initialPoint :: Int -> Int -> Point
-initialPoint 4 7 = set cell (Just basicRespirator) emptyPoint
-initialPoint 3 8 = set cell (Just basicPhotosynthesiser) emptyPoint
-initialPoint x y = set (quantities.key B) 5 emptyPoint
-
-emptyPoint = Point
-  { _quantities = M.empty 0
-  , _cell = Nothing
-  }
-
--- Lens into the element of a total map at a given key
-key :: Ord k => k -> Lens' (TMap k a) a
-key k = lens (M.! k) (flip (M.insert k))
+--------------------------------------------------------------------------------
+-- Simulation
+--------------------------------------------------------------------------------
 
 -- respiration: A -> B + energy
 respiration :: Point -> Point
@@ -90,9 +71,6 @@ respiration p
     p
   | otherwise = p
 
-photosynthesisRate :: Double
-photosynthesisRate = 1.5
-
 -- photosynthesis: A + light (implicit) -> B
 photosynthesis :: Point -> Point
 photosynthesis p
@@ -101,9 +79,6 @@ photosynthesis p
     over (quantities.key B) (subtract photosynthesisRate) $
     p
   | otherwise = p
-
-diffusionRate :: Double
-diffusionRate = 0.01
 
 diffusion :: World -> (Int, Int) -> Point -> Point
 diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff c)) [minBound..maxBound]) p
@@ -127,11 +102,60 @@ diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff
 simPoint :: Point -> Point
 simPoint = photosynthesis . respiration
 
+simulate :: World -> World
+simulate w = over grid (mapWithIndex (diffusion w)) $ over (grid.mapped) simPoint w
+
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
+
 mapWithIndex :: Ix i => (i -> e -> e) -> Array i e -> Array i e
 mapWithIndex f a = array (bounds a) [(i, f i (a!i)) | i <- indices a]
 
-simulate :: World -> World
-simulate w = over grid (mapWithIndex (diffusion w)) $ over (grid.mapped) simPoint w
+-- Lens into the element of a total map at a given key
+key :: Ord k => k -> Lens' (TMap k a) a
+key k = lens (M.! k) (flip (M.insert k))
+
+--------------------------------------------------------------------------------
+-- Initial setup
+--------------------------------------------------------------------------------
+
+exampleWorld :: Int -> Int -> World
+exampleWorld w h = World
+  { _width = w
+  , _height = h
+  , _grid = array ((0,0),(w-1, h-1))
+            [((x,y), initialPoint x y) | x <- [0..w-1], y <-[0..h-1]]
+  }
+
+emptyDNA :: DNA
+emptyDNA = DNA (M.empty False) diffusionRate
+
+basicRespirator :: Cell
+basicRespirator = Cell (set membraneDiffusion 0.001 emptyDNA)
+
+basicPhotosynthesiser :: Cell
+basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.002)
+
+initialPoint :: Int -> Int -> Point
+initialPoint 4 7 = set cell (Just basicRespirator) emptyPoint
+initialPoint 3 8 = set cell (Just basicPhotosynthesiser) emptyPoint
+initialPoint x y = set (quantities.key B) 5 emptyPoint
+
+emptyPoint = Point
+  { _quantities = M.empty 0
+  , _cell = Nothing
+  }
+
+--------------------------------------------------------------------------------
+-- Visualisation
+--------------------------------------------------------------------------------
+
+printPoint :: Point -> Char
+printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key A))
+
+printWorld :: World -> String
+printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
 
 loop :: MonadIO m => World -> m ()
 loop w = void $ flip runStateT w $ forever $ do
