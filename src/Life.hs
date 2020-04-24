@@ -18,13 +18,12 @@ data Cell = Cell
   deriving Show
 makeLenses ''Cell
 
-data Chemical = A | B
+data Quantity = A | B | Energy
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 data Point = Point
-  { _chemicals :: TMap Chemical Double
+  { _quantities :: TMap Quantity Double
   , _cell :: Maybe Cell
-  , _energy :: Double
   }
   deriving Show
 makeLenses ''Point
@@ -46,19 +45,18 @@ exampleWorld w h = World
   }
 
 printPoint :: Point -> Char
-printPoint p = toEnum $ fromEnum '0' + floor ((p^.chemicals.key B))
+printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key Energy))
 
 printWorld :: World -> String
 printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
 
 initialPoint :: Int -> Int -> Point
 initialPoint 5 6 = emptyPoint {_cell = Just (Cell DNA)}
-initialPoint x y = set (chemicals.key A) 9 emptyPoint
+initialPoint x y = set (quantities.key A) 9 emptyPoint
 
 emptyPoint = Point
-  { _chemicals = M.empty 0
+  { _quantities = M.empty 0
   , _cell = Nothing
-  , _energy = 0
   }
 
 -- Lens into the element of a total map at a given key
@@ -68,23 +66,26 @@ key k = lens (M.! k) (flip (M.insert k))
 -- respiration: A -> B + energy
 respiration :: Point -> Point
 respiration p
-  | p^.chemicals.key A >= 1 && isJust (p^.cell) = over (chemicals.key B) (+1)
-                                                  $ over (chemicals.key A) (subtract 1) $ p
+  | p^.quantities.key A >= 1 && isJust (p^.cell)
+  = over (quantities.key B) (+1) $
+    over (quantities.key A) (subtract 1) $
+    over (quantities.key Energy) (+2) $
+    p
   | otherwise = p
 
 diffusionRate :: Double
 diffusionRate = 0.01
 
 diffusion :: World -> (Int, Int) -> Point -> Point
-diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (chemicals.key c) (diff c)) [minBound..maxBound]) p
+diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff c)) [minBound..maxBound]) p
   where
-    diff :: Chemical -> Double -> Double
+    diff :: Quantity -> Double -> Double
     diff c = subtract
       (diffusionRate * sum
-        [factor dx dy * (c00 - fromMaybe c00 (w^?grid.ix (x+dx, y+dy).chemicals.key c))
+        [factor dx dy * (c00 - fromMaybe c00 (w^?grid.ix (x+dx, y+dy).quantities.key c))
         | dx <- [-1..1], dy <- [-1..1]])
       where
-        c00 = p^.chemicals.key c
+        c00 = p^.quantities.key c
     factor x y | abs x == abs y = 1 / sqrt 2
                | otherwise = 1
 
