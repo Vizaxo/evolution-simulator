@@ -57,6 +57,9 @@ photosynthesisRate = 1.5
 diffusionRate :: Double
 diffusionRate = 0.01
 
+reproductionThreshold :: Double
+reproductionThreshold = 10
+
 --------------------------------------------------------------------------------
 -- Simulation
 --------------------------------------------------------------------------------
@@ -99,11 +102,29 @@ diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff
     factor x y | abs x == abs y = 1 / sqrt 2
                | otherwise = 1
 
+willReproduce :: Point -> Bool
+willReproduce p = isJust (p^.cell) && p^.quantities.key Energy > reproductionThreshold
+
+reproduce :: World -> (Int, Int) -> Point -> Point
+reproduce w (x,y) p | reproducing x y
+  = over (quantities.key Energy) (/3) p
+                    | reproducing (x-1) y
+  = set cell (fromJust (w^?grid.ix (x-1, y).cell))
+    $ over (quantities.key Energy)
+                      (+ (fromMaybe 0 (w^?grid.ix (x-1, y).quantities.key Energy) / 3)) p
+                    | otherwise = p
+  where spaceToReproduce x y = case w^?grid.ix (x, y) of
+          Nothing -> False
+          Just p -> isNothing (p^.cell)
+        reproducing x y = case w^?grid.ix (x, y) of
+          Nothing -> False
+          Just p' -> willReproduce p' && spaceToReproduce (x+1) y
+
 simPoint :: Point -> Point
 simPoint = photosynthesis . respiration
 
 simulate :: World -> World
-simulate w = over grid (mapWithIndex (diffusion w)) $ over (grid.mapped) simPoint w
+simulate w = over grid (mapWithIndex (\i -> reproduce w i . diffusion w i)) $ over (grid.mapped) simPoint w
 
 --------------------------------------------------------------------------------
 -- Utilities
@@ -132,15 +153,15 @@ emptyDNA :: DNA
 emptyDNA = DNA (M.empty False) diffusionRate
 
 basicRespirator :: Cell
-basicRespirator = Cell (set membraneDiffusion 0.001 emptyDNA)
+basicRespirator = Cell (set membraneDiffusion 0.005 emptyDNA)
 
 basicPhotosynthesiser :: Cell
-basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.002)
+basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.01)
 
 initialPoint :: Int -> Int -> Point
 initialPoint 4 7 = set cell (Just basicRespirator) emptyPoint
 initialPoint 3 8 = set cell (Just basicPhotosynthesiser) emptyPoint
-initialPoint x y = set (quantities.key B) 5 emptyPoint
+initialPoint x y = set (quantities.key A) 0 $ set (quantities.key B) 10 emptyPoint
 
 emptyPoint = Point
   { _quantities = M.empty 0
@@ -152,7 +173,7 @@ emptyPoint = Point
 --------------------------------------------------------------------------------
 
 printPoint :: Point -> Char
-printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key A))
+printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key Energy))
 
 printWorld :: World -> String
 printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
