@@ -22,7 +22,7 @@ data Gene = Photosynthesiser
   deriving (Eq, Ord, Show)
 
 data DNA = DNA
-  { _properties :: TMap Gene Bool
+  { _properties :: TMap Gene Double
   , _membraneDiffusion :: Double
   }
   deriving Show
@@ -75,7 +75,7 @@ reproductionThreshold = 50
 -- should have a unique 'op' number from 0 to numRands-1. This ensures
 -- random numbers are never re-used.
 numRands :: Int
-numRands = 2
+numRands = 4
 
 --------------------------------------------------------------------------------
 -- Simulation
@@ -99,11 +99,13 @@ kill = set cell Nothing
 -- photosynthesis: B + light (implicit) -> A
 photosynthesis :: Point -> Point
 photosynthesis p
-  | p^.quantities.key B >= photosynthesisRate && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just True)
-  = over (quantities.key A) (+photosynthesisRate) $
-    over (quantities.key B) (subtract photosynthesisRate) $
-    p
-  | otherwise = p
+  = case (p^?cell._Just.dna.properties.key Photosynthesiser) of
+      Nothing -> p
+      Just amount -> if p^.quantities.key B >= photosynthesisRate*amount then
+                       over (quantities.key A) (+photosynthesisRate*amount) $
+                       over (quantities.key B) (subtract (photosynthesisRate*amount)) $
+                       p
+                     else p
 
 diffusion :: World -> Coord -> Point -> Point
 diffusion w v p = (foldr (.) id
@@ -140,7 +142,7 @@ reproduce w v p
   = over (quantities.key Energy) (/3) p
   | spaceToReproduce v
   = case tryingToReproduceInto v of
-      [(_, v')] -> set cell (fromJust (w^?grid.ix v'.cell))
+      [(_, v')] -> set cell (mutate <$> (fromJust (w^?grid.ix v'.cell)))
                    $ over (quantities.key Energy)
                    (const 0) p --(+ (fromMaybe 0 (w^?grid.ix v'.quantities.key Energy) / 10000)) p
       _ -> p
@@ -153,6 +155,9 @@ reproduce w v p
         reproducing v = case willReproduce w v of
                           Nothing -> False
                           Just v' -> spaceToReproduce v'
+        mutate = over (dna.properties.key Photosynthesiser) (+ jitter 0)
+          . over (dna.membraneDiffusion) (+ jitter 1)
+        jitter n = 1 / fromIntegral ((getRand (2+n) w v `mod` 10) + 1)
 
 simPoint :: Point -> Point
 simPoint = photosynthesis . respiration
@@ -230,13 +235,13 @@ exampleWorld w h = World
   }
 
 emptyDNA :: DNA
-emptyDNA = DNA (M.empty False) diffusionRate
+emptyDNA = DNA (M.empty 0) diffusionRate
 
 basicRespirator :: Cell
 basicRespirator = Cell (set membraneDiffusion 0.005 emptyDNA)
 
 basicPhotosynthesiser :: Cell
-basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.01)
+basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser 1 (M.empty 0)) 0.01)
 
 initialPoint :: Coord -> Point
 initialPoint (V2 4 7) = set (quantities.key A) 100 $ set cell (Just basicRespirator) emptyPoint
@@ -253,7 +258,9 @@ emptyPoint = Point
 --------------------------------------------------------------------------------
 
 printPoint :: Point -> [Char]
-printPoint p = (if isJust (p^.cell) then '#' else ' '):(showNDigits 2 (floor x) ++ " ")
+printPoint p = case p^.cell of
+  Nothing -> (" " ++ showNDigits 2 (floor x) ++ " ")
+  Just c -> "#" ++ showNDigits 2 (floor (c^.dna.membraneDiffusion * 1000)) ++ " "
   where x = p^.quantities.key Energy
 
 printWorld :: World -> String
