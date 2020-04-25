@@ -69,7 +69,7 @@ diffusionRate :: Double
 diffusionRate = 0.001
 
 reproductionThreshold :: Double
-reproductionThreshold = 30
+reproductionThreshold = 50
 
 -- The number of distinct calls to getRand in the program. Each call
 -- should have a unique 'op' number from 0 to numRands-1. This ensures
@@ -84,12 +84,17 @@ numRands = 2
 -- respiration: A -> B + energy
 respiration :: Point -> Point
 respiration p
-  | p^.quantities.key A >= respirationRate && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just False)
-  = over (quantities.key B) (+respirationRate) $
-    over (quantities.key A) (subtract respirationRate) $
-    over (quantities.key Energy) (+0.5 * respirationRate) $
-    p
-  | otherwise = p
+  = case p^.cell of
+      Nothing -> p
+      Just c -> if p^.quantities.key A >= respirationRate
+                then respire p
+                else kill p
+  where respire = over (quantities.key B) (+respirationRate) .
+                  over (quantities.key A) (subtract respirationRate) .
+                  over (quantities.key Energy) (+0.3 * respirationRate)
+
+kill :: Point -> Point
+kill = set cell Nothing
 
 -- photosynthesis: B + light (implicit) -> A
 photosynthesis :: Point -> Point
@@ -234,9 +239,9 @@ basicPhotosynthesiser :: Cell
 basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.01)
 
 initialPoint :: Coord -> Point
-initialPoint (V2 4 7) = set cell (Just basicRespirator) emptyPoint
-initialPoint (V2 3 8) = set cell (Just basicPhotosynthesiser) emptyPoint
-initialPoint v = set (quantities.key A) 0 $ set (quantities.key B) 60 emptyPoint
+initialPoint (V2 4 7) = set (quantities.key A) 100 $ set cell (Just basicRespirator) emptyPoint
+initialPoint (V2 3 8) = set (quantities.key A) 10 $ set cell (Just basicPhotosynthesiser) emptyPoint
+initialPoint v = set (quantities.key A) 5 $ set (quantities.key B) 60 emptyPoint
 
 emptyPoint = Point
   { _quantities = M.empty 0
