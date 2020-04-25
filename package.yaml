@@ -3,6 +3,7 @@ version:             0.1.0.0
 license:             AGPL-3
 
 dependencies:
+- ansi-terminal
 - array
 - base >= 4.7 && < 5
 - containers

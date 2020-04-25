@@ -1,6 +1,7 @@
 module Life where
 
 import Control.Concurrent
+import Control.Exception
 import Control.Lens hiding (indices)
 import Control.Monad
 import Control.Monad.State
@@ -8,9 +9,10 @@ import Data.Array
 import Data.Bits
 import Data.Maybe
 import Data.TotalMap (TMap)
-import Data.Word
 import qualified Data.TotalMap as M
+import Data.Word
 import Linear
+import System.Console.ANSI
 
 --------------------------------------------------------------------------------
 -- Types
@@ -253,8 +255,17 @@ printWorld w = unlines [concat $ replicate y' "  " ++
                        | y' <- [0..w^.height-1]]
 
 loop :: MonadIO m => World -> m ()
-loop w = void $ flip runStateT w $ forever $ do
-  w <- get
-  modify simulate
-  liftIO $ putStrLn (printWorld w)
-  liftIO $ threadDelay 100000
+loop w = liftIO $ go `finally` cleanup
+  where
+    go = do
+      hideCursor
+      void $ flip runStateT w $ forever $ do
+        w <- get
+        modify simulate
+        liftIO $ do
+          putStrLn (printWorld w)
+          putStrLn ("Frame " ++ show (w^.frame))
+          cursorUp printHeight
+          threadDelay 10000
+    cleanup = cursorDown printHeight >> showCursor
+    printHeight = w^.height + 2
