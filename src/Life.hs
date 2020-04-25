@@ -70,7 +70,7 @@ reproductionThreshold = 3
 -- should have a unique 'op' number from 0 to numRands-1. This ensures
 -- random numbers are never re-used.
 numRands :: Int
-numRands = 1
+numRands = 2
 
 --------------------------------------------------------------------------------
 -- Simulation
@@ -114,26 +114,35 @@ diffusion w v p = (foldr (.) id
            [dr (v+dv) * (c00 - fromMaybe c00 (w^?grid.ix (v+dv).quantities.key c))
            | dv <- hexDirs]
 
-willReproduce :: World -> Coord -> Point -> Bool
-willReproduce w v p = isJust (p^.cell)
-  && p^.quantities.key Energy > reproductionThreshold
-  && getRand 0 w v (0.0, 1.0) > (0.9::Float)
+willReproduce :: World -> Coord -> Maybe Coord
+willReproduce w v = case w^?grid.ix v of
+  Nothing -> Nothing
+  Just p -> if isJust (p^.cell)
+    && p^.quantities.key Energy > reproductionThreshold
+    && getRand 0 w v `mod` 1000 >= 0
+    then Just pos else Nothing
+  where
+    pos = v + (hexDirs !! (getRand 1 w v `mod` 6))
 
 reproduce :: World -> Coord -> Point -> Point
 reproduce w v p
   | reproducing v
   = over (quantities.key Energy) (/3) p
-  | reproducing (v - x)
-  = set cell (fromJust (w^?grid.ix (v - x).cell))
-    $ over (quantities.key Energy)
-                      (+ (fromMaybe 0 (w^?grid.ix (v - x).quantities.key Energy) / 3)) p
+  | spaceToReproduce v
+  = case tryingToReproduceInto v of
+      [(_, v')] -> set cell (fromJust (w^?grid.ix v'.cell))
+                   $ over (quantities.key Energy)
+                   (const 0) p --(+ (fromMaybe 0 (w^?grid.ix v'.quantities.key Energy) / 10000)) p
+      _ -> p
   | otherwise = p
   where spaceToReproduce v = case w^?grid.ix v of
           Nothing -> False
-          Just p -> isNothing (p^.cell)
-        reproducing v = case w^?grid.ix v of
-          Nothing -> False
-          Just p' -> willReproduce w v p' && spaceToReproduce (v + x)
+          Just p -> isNothing (p^.cell) && length (tryingToReproduceInto v) <= 1
+        tryingToReproduceInto v = filter ((== Just v) . fst)
+          [(willReproduce w (v+dv), v+dv) | dv <- hexDirs]
+        reproducing v = case willReproduce w v of
+                          Nothing -> False
+                          Just v' -> spaceToReproduce v'
 
 simPoint :: Point -> Point
 simPoint = photosynthesis . respiration
