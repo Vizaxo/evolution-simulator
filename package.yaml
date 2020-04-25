@@ -9,6 +9,7 @@ dependencies:
 - lens
 - mtl
 - total-map
+- linear
 
 default-extensions:
 - RankNTypes

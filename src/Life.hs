@@ -8,6 +8,7 @@ import Data.Array
 import Data.Maybe
 import Data.TotalMap (TMap)
 import qualified Data.TotalMap as M
+import Linear
 
 --------------------------------------------------------------------------------
 -- Types
@@ -39,10 +40,12 @@ data Point = Point
   deriving Show
 makeLenses ''Point
 
+type Coord = V2 Int
+
 data World = World
   { _width :: Int
   , _height :: Int
-  , _grid :: Array (Int, Int) Point
+  , _grid :: Array Coord Point
   }
   deriving Show
 makeLenses ''World
@@ -83,42 +86,43 @@ photosynthesis p
     p
   | otherwise = p
 
-diffusion :: World -> (Int, Int) -> Point -> Point
-diffusion w (x, y) p = (foldr (.) id $ fmap (\c -> over (quantities.key c) (diff c)) [minBound..maxBound]) p
+diffusion :: World -> Coord -> Point -> Point
+diffusion w v p = (foldr (.) id
+                   ((\c -> over (quantities.key c) (diffuse c)) <$> [minBound..maxBound]))
+                  p
   where
     dr00 :: Double
-    dr00 = case p^.cell of
-      Nothing -> diffusionRate
-      Just c -> c^.dna.membraneDiffusion
+    dr00 = fromMaybe diffusionRate (p^?cell._Just.dna.membraneDiffusion)
 
-    diff :: Quantity -> Double -> Double
-    diff c = subtract
-      (sum [dr (x+dx) (y+dy) * factor dx dy * (c00 - fromMaybe c00 (w^?grid.ix (x+dx, y+dy).quantities.key c))
-        | dx <- [-1..1], dy <- [-1..1]])
-      where
+    dr :: Coord -> Double
+    dr v = min dr00 (fromMaybe diffusionRate
+                     (w^?grid.ix v.cell._Just.dna.membraneDiffusion))
 
-        c00 = p^.quantities.key c
-        dr x y = min dr00 (fromMaybe diffusionRate (w^?grid.ix (x, y).cell._Just.dna.membraneDiffusion))
-    factor x y | abs x == abs y = 1 / sqrt 2
-               | otherwise = 1
+    diffuse :: Quantity -> Double -> Double
+    diffuse c
+      = let c00 = p^.quantities.key c
+        in subtract $ sum
+           [dr (v+dv) * (c00 - fromMaybe c00 (w^?grid.ix (v+dv).quantities.key c))
+           | dv <- hexDirs]
 
 willReproduce :: Point -> Bool
 willReproduce p = isJust (p^.cell) && p^.quantities.key Energy > reproductionThreshold
 
-reproduce :: World -> (Int, Int) -> Point -> Point
-reproduce w (x,y) p | reproducing x y
+reproduce :: World -> Coord -> Point -> Point
+reproduce w v p
+  | reproducing v
   = over (quantities.key Energy) (/3) p
-                    | reproducing (x-1) y
-  = set cell (fromJust (w^?grid.ix (x-1, y).cell))
+  | reproducing (v - x)
+  = set cell (fromJust (w^?grid.ix (v - x).cell))
     $ over (quantities.key Energy)
-                      (+ (fromMaybe 0 (w^?grid.ix (x-1, y).quantities.key Energy) / 3)) p
-                    | otherwise = p
-  where spaceToReproduce x y = case w^?grid.ix (x, y) of
+                      (+ (fromMaybe 0 (w^?grid.ix (v - x).quantities.key Energy) / 3)) p
+  | otherwise = p
+  where spaceToReproduce v = case w^?grid.ix v of
           Nothing -> False
           Just p -> isNothing (p^.cell)
-        reproducing x y = case w^?grid.ix (x, y) of
+        reproducing v = case w^?grid.ix v of
           Nothing -> False
-          Just p' -> willReproduce p' && spaceToReproduce (x+1) y
+          Just p' -> willReproduce p' && spaceToReproduce (v + x)
 
 simPoint :: Point -> Point
 simPoint = photosynthesis . respiration
@@ -137,6 +141,26 @@ mapWithIndex f a = array (bounds a) [(i, f i (a!i)) | i <- indices a]
 key :: Ord k => k -> Lens' (TMap k a) a
 key k = lens (M.! k) (flip (M.insert k))
 
+showNDigits :: Int -> Int -> [Char]
+showNDigits n x = reverse (take n (reverse (show x) ++ repeat '0'))
+
+--------------------------------------------------------------------------------
+-- Hex grid
+--------------------------------------------------------------------------------
+
+-- The hex grid has is defined by its x (horizontal) and y (diagonal
+-- up) coordinates, but a z vector pointing in the other diagonal to y
+-- is also useful
+
+x, y, z :: Coord
+x = V2 1 0
+y = V2 0 1
+z = y - x
+
+-- Vectors to the 6 adjacent hexes
+hexDirs :: [Coord]
+hexDirs = [x, -x, y, -y, z, -z]
+
 --------------------------------------------------------------------------------
 -- Initial setup
 --------------------------------------------------------------------------------
@@ -145,8 +169,12 @@ exampleWorld :: Int -> Int -> World
 exampleWorld w h = World
   { _width = w
   , _height = h
-  , _grid = array ((0,0),(w-1, h-1))
-            [((x,y), initialPoint x y) | x <- [0..w-1], y <-[0..h-1]]
+  , _grid = array (zero, (w-1)*^x + (h-1)*^y)
+            [(v, initialPoint v)
+            | x' <- (*^x) <$> [0..w-1]
+            , y' <-(*^y) <$> [0..h-1]
+            , let v = x' + y'
+            ]
   }
 
 emptyDNA :: DNA
@@ -158,10 +186,10 @@ basicRespirator = Cell (set membraneDiffusion 0.005 emptyDNA)
 basicPhotosynthesiser :: Cell
 basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False)) 0.01)
 
-initialPoint :: Int -> Int -> Point
-initialPoint 4 7 = set cell (Just basicRespirator) emptyPoint
-initialPoint 3 8 = set cell (Just basicPhotosynthesiser) emptyPoint
-initialPoint x y = set (quantities.key A) 0 $ set (quantities.key B) 10 emptyPoint
+initialPoint :: Coord -> Point
+initialPoint (V2 4 7) = set cell (Just basicRespirator) emptyPoint
+initialPoint (V2 3 8) = set cell (Just basicPhotosynthesiser) emptyPoint
+initialPoint v = set (quantities.key A) 0 $ set (quantities.key B) 10 emptyPoint
 
 emptyPoint = Point
   { _quantities = M.empty 0
@@ -172,11 +200,15 @@ emptyPoint = Point
 -- Visualisation
 --------------------------------------------------------------------------------
 
-printPoint :: Point -> Char
-printPoint p = toEnum $ fromEnum '0' + floor ((p^.quantities.key Energy))
+printPoint :: Point -> [Char]
+printPoint p = (if isJust (p^.cell) then '#' else ' '):(showNDigits 2 (floor x) ++ " ")
+  where x = p^.quantities.key Energy
 
 printWorld :: World -> String
-printWorld w = unlines [[printPoint ((w^.grid)!(x,y)) | x <- [0..w^.width-1]] | y <- [0..w^.height-1]]
+printWorld w = unlines [concat $ replicate y' "  " ++
+                         [printPoint ((w^.grid)!v)
+                         | x' <- [0..w^.width-1], let v = x'*^x + y'*^y]
+                       | y' <- [0..w^.height-1]]
 
 loop :: MonadIO m => World -> m ()
 loop w = void $ flip runStateT w $ forever $ do
