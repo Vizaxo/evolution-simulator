@@ -8,6 +8,7 @@ import Data.Array
 import Data.Maybe
 import Data.TotalMap (TMap)
 import qualified Data.TotalMap as M
+import System.Random
 import Linear
 
 --------------------------------------------------------------------------------
@@ -46,6 +47,7 @@ data World = World
   { _width :: Int
   , _height :: Int
   , _grid :: Array Coord Point
+  , _frame :: Int
   }
   deriving Show
 makeLenses ''World
@@ -61,7 +63,13 @@ diffusionRate :: Double
 diffusionRate = 0.01
 
 reproductionThreshold :: Double
-reproductionThreshold = 10
+reproductionThreshold = 3
+
+-- The number of distinct calls to getRand in the program. Each call
+-- should have a unique 'op' number from 0 to numRands-1. This ensures
+-- random numbers are never re-used.
+numRands :: Int
+numRands = 1
 
 --------------------------------------------------------------------------------
 -- Simulation
@@ -105,8 +113,10 @@ diffusion w v p = (foldr (.) id
            [dr (v+dv) * (c00 - fromMaybe c00 (w^?grid.ix (v+dv).quantities.key c))
            | dv <- hexDirs]
 
-willReproduce :: Point -> Bool
-willReproduce p = isJust (p^.cell) && p^.quantities.key Energy > reproductionThreshold
+willReproduce :: World -> Coord -> Point -> Bool
+willReproduce w v p = isJust (p^.cell)
+  && p^.quantities.key Energy > reproductionThreshold
+  && getRand 0 w v (0.0, 1.0) > (0.9::Float)
 
 reproduce :: World -> Coord -> Point -> Point
 reproduce w v p
@@ -122,13 +132,16 @@ reproduce w v p
           Just p -> isNothing (p^.cell)
         reproducing v = case w^?grid.ix v of
           Nothing -> False
-          Just p' -> willReproduce p' && spaceToReproduce (v + x)
+          Just p' -> willReproduce w v p' && spaceToReproduce (v + x)
 
 simPoint :: Point -> Point
 simPoint = photosynthesis . respiration
 
 simulate :: World -> World
-simulate w = over grid (mapWithIndex (\i -> reproduce w i . diffusion w i)) $ over (grid.mapped) simPoint w
+simulate w
+  = over frame (+1)
+  $ over grid (mapWithIndex (\i -> reproduce w i . diffusion w i))
+  $ over (grid.mapped) simPoint w
 
 --------------------------------------------------------------------------------
 -- Utilities
@@ -143,6 +156,13 @@ key k = lens (M.! k) (flip (M.insert k))
 
 showNDigits :: Int -> Int -> [Char]
 showNDigits n x = reverse (take n (reverse (show x) ++ repeat '0'))
+
+getRand :: Random a => Int -> World -> Coord -> (a, a) -> a
+getRand op w v r = fst (randomR r (mkStdGen (mkSeed w (v^._x) (v^._y) op)))
+
+mkSeed :: World -> Int -> Int -> Int -> Int
+mkSeed w x y op = (((w^.frame)*(w^.height) + y)*(w^.width) + x)*numRands + op
+
 
 --------------------------------------------------------------------------------
 -- Hex grid
@@ -175,6 +195,7 @@ exampleWorld w h = World
             , y' <-(*^y) <$> [0..h-1]
             , let v = x' + y'
             ]
+  , _frame = 0
   }
 
 emptyDNA :: DNA
