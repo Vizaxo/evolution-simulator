@@ -66,10 +66,10 @@ respirationRate :: Double
 respirationRate = 1.0
 
 diffusionRate :: Double
-diffusionRate = 0.01
+diffusionRate = 0.001
 
 reproductionThreshold :: Double
-reproductionThreshold = 3
+reproductionThreshold = 30
 
 -- The number of distinct calls to getRand in the program. Each call
 -- should have a unique 'op' number from 0 to numRands-1. This ensures
@@ -91,7 +91,7 @@ respiration p
     p
   | otherwise = p
 
--- photosynthesis: A + light (implicit) -> B
+-- photosynthesis: B + light (implicit) -> A
 photosynthesis :: Point -> Point
 photosynthesis p
   | p^.quantities.key B >= photosynthesisRate && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just True)
@@ -124,7 +124,7 @@ willReproduce w v = case w^?grid.ix v of
   Nothing -> Nothing
   Just p -> if isJust (p^.cell)
     && p^.quantities.key Energy > reproductionThreshold
-    && getRand 0 w v `mod` 1000 >= 0
+    && getRand 0 w v `mod` 1000 >= 900
     then Just pos else Nothing
   where
     pos = v + (hexDirs !! (getRand 1 w v `mod` 6))
@@ -236,7 +236,7 @@ basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser True (M.empty False
 initialPoint :: Coord -> Point
 initialPoint (V2 4 7) = set cell (Just basicRespirator) emptyPoint
 initialPoint (V2 3 8) = set cell (Just basicPhotosynthesiser) emptyPoint
-initialPoint v = set (quantities.key A) 0 $ set (quantities.key B) 10 emptyPoint
+initialPoint v = set (quantities.key A) 0 $ set (quantities.key B) 60 emptyPoint
 
 emptyPoint = Point
   { _quantities = M.empty 0
