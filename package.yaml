@@ -9,7 +9,6 @@ dependencies:
 - lens
 - linear
 - mtl
-- random
 - total-map
 
 default-extensions:

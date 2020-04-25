@@ -5,10 +5,11 @@ import Control.Lens hiding (indices)
 import Control.Monad
 import Control.Monad.State
 import Data.Array
+import Data.Bits
 import Data.Maybe
 import Data.TotalMap (TMap)
+import Data.Word
 import qualified Data.TotalMap as M
-import System.Random
 import Linear
 
 --------------------------------------------------------------------------------
@@ -157,12 +158,23 @@ key k = lens (M.! k) (flip (M.insert k))
 showNDigits :: Int -> Int -> [Char]
 showNDigits n x = reverse (take n (reverse (show x) ++ repeat '0'))
 
-getRand :: Random a => Int -> World -> Coord -> (a, a) -> a
-getRand op w v r = fst (randomR r (mkStdGen (mkSeed w (v^._x) (v^._y) op)))
+getRand :: Num a => Int -> World -> Coord -> a
+getRand op w v = fromIntegral (hash (mkSeed w (v^._x) (v^._y) op))
 
-mkSeed :: World -> Int -> Int -> Int -> Int
-mkSeed w x y op = (((w^.frame)*(w^.height) + y)*(w^.width) + x)*numRands + op
+mkSeed :: World -> Int -> Int -> Int -> Word32
+mkSeed w x y op = fromIntegral ((((w^.frame)*(w^.height) + y)*(w^.width) + x)*numRands + op)
 
+hash :: Word32 -> Word32
+hash x = let x1 = ((x `shiftR` 16) `xor` x) * 0x45d9f3b
+             x2 = ((x1 `shiftR` 16) `xor` x1) * 0x45d9f3b
+             x3 = ((x2 `shiftR` 16) `xor` x2)
+         in x3
+
+unhash :: Word32 -> Word32
+unhash x = let x1 = ((x `shiftR` 16) `xor` x) * 0x119de1f3
+               x2 = ((x1 `shiftR` 16) `xor` x1) * 0x119de1f3
+               x3 = ((x2 `shiftR` 16) `xor` x2)
+           in x3
 
 --------------------------------------------------------------------------------
 -- Hex grid
