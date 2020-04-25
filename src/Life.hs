@@ -62,6 +62,9 @@ makeLenses ''World
 photosynthesisRate :: Double
 photosynthesisRate = 1.5
 
+respirationRate :: Double
+respirationRate = 1.0
+
 diffusionRate :: Double
 diffusionRate = 0.01
 
@@ -81,10 +84,10 @@ numRands = 2
 -- respiration: A -> B + energy
 respiration :: Point -> Point
 respiration p
-  | p^.quantities.key A >= 1 && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just False)
-  = over (quantities.key B) (+1) $
-    over (quantities.key A) (subtract 1) $
-    over (quantities.key Energy) (+2) $
+  | p^.quantities.key A >= respirationRate && ((p^?cell._Just.dna.properties.key Photosynthesiser) == Just False)
+  = over (quantities.key B) (+respirationRate) $
+    over (quantities.key A) (subtract respirationRate) $
+    over (quantities.key Energy) (+0.5 * respirationRate) $
     p
   | otherwise = p
 
