@@ -8,34 +8,55 @@ import Control.Monad.Trans
 import Data.Array
 import Data.Time.Clock
 import qualified Graphics.Rendering.OpenGL as GL
+import Graphics.Rendering.OpenGL (($=))
+import qualified Graphics.UI.GLFW as GLFW
 import Linear
+import System.Exit
 import System.FSNotify
 
 import Life
 import OpenGL
 import STMState
 
+data VisualisationState = VisualisationState
+  { _simSpeed :: Int
+  }
+  deriving Show
+makeLenses ''VisualisationState
+
 mainOpenGL :: FilePath -> IO ()
 mainOpenGL shaderDir = do
   makeWindow
   initOGL
 
-  let w = exampleWorld 20 10
   rs <- initRenderState shaderDir
+  let w = exampleWorld 20 10
+  let vs = VisualisationState 0
   rsTVar <- liftIO (newTVarIO rs)
   wTVar <- liftIO (newTVarIO w)
+  vsTVar <- liftIO (newTVarIO vs)
 
   recompileOnChange rsTVar shaderDir
   postInit rsTVar
+  GLFW.keyCallback $= keyCallback vsTVar
 
   t0 <- liftIO (getCurrentTime)
-  void $ runSTMStateT wTVar $ runSTMStateT rsTVar $ do
+  void $ runSTMStateT vsTVar $ runSTMStateT wTVar $ runSTMStateT rsTVar $ do
     forever $ do
       w <- get @World
+      vs <- get @VisualisationState
       (_, t) <- elapsedTime t0
       renderFrame t (worldToVertices w)
-      modify simulate
+      modify (((!! (2^(vs^.simSpeed)))) . iterate simulate)
       liftIO (threadDelay 5000)
+
+keyCallback :: TVar VisualisationState -> GLFW.Key -> GLFW.KeyButtonState -> IO ()
+keyCallback _ (GLFW.SpecialKey GLFW.ESC) GLFW.Press = exitSuccess
+keyCallback s (GLFW.CharKey '.') GLFW.Press
+  = void $ runSTMStateT s (modify (over simSpeed (+1)))
+keyCallback s (GLFW.CharKey ',') GLFW.Press
+  = void $ runSTMStateT s (modify (over simSpeed (max 0 . (subtract 1))))
+keyCallback _ _ _ = pure ()
 
 colourPoint :: Point -> GL.Vector3 Float
 colourPoint p = case p^.cell of

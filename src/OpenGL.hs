@@ -82,13 +82,7 @@ initRenderState shaderDir = do
   pure (RenderState shaderProg vao windowSize currentTime False shaderDir)
 
 postInit :: MonadIO m => TVar RenderState -> m ()
-postInit s = do
-  GLFW.windowSizeCallback $= updateWindowSize s
-  GLFW.keyCallback $= keyCallback
-
-keyCallback :: GLFW.Key -> GLFW.KeyButtonState -> IO ()
-keyCallback (GLFW.SpecialKey GLFW.ESC) GLFW.Press = exitSuccess
-keyCallback _ _ = pure ()
+postInit s = GLFW.windowSizeCallback $= updateWindowSize s
 
 updateWindowSize :: MonadIO m => TVar RenderState -> GL.Size -> m ()
 updateWindowSize s size = void $ runSTMStateT s $ do
