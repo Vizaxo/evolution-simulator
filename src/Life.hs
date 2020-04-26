@@ -108,11 +108,11 @@ diffusion w v p = (foldr (.) id
                   p
   where
     dr00 :: Double
-    dr00 = fromMaybe diffusionRate (p^?cell._Just.dna.membraneDiffusion)
+    dr00 = max 0 (min (1/6) (fromMaybe diffusionRate (p^?cell._Just.dna.membraneDiffusion)))
 
     dr :: Coord -> Double
-    dr v = min dr00 (fromMaybe diffusionRate
-                     (w^?grid.ix v.cell._Just.dna.membraneDiffusion))
+    dr v = max 0 (min (1/6) (min dr00 (fromMaybe diffusionRate
+                     (w^?grid.ix v.cell._Just.dna.membraneDiffusion))))
 
     diffuse :: Quantity -> Double -> Double
     diffuse c
@@ -241,7 +241,7 @@ basicPhotosynthesiser = Cell (DNA (M.insert Photosynthesiser 1 (M.empty 0)) 0.01
 initialPoint :: Coord -> Point
 initialPoint (V2 4 7) = set (quantities.key A) 100 $ set cell (Just basicRespirator) emptyPoint
 initialPoint (V2 3 8) = set (quantities.key A) 10 $ set cell (Just basicPhotosynthesiser) emptyPoint
-initialPoint v = set (quantities.key A) 5 $ set (quantities.key B) 60 emptyPoint
+initialPoint v = set (quantities.key A) 2 $ set (quantities.key B) 2 emptyPoint
 
 emptyPoint = Point
   { _quantities = M.empty 0
