@@ -3,19 +3,30 @@ version:             0.1.0.0
 license:             AGPL-3
 
 dependencies:
+- GLFW
+- GLFW
+- GLUtil
+- OpenGL
 - ansi-terminal
 - array
 - base >= 4.7 && < 5
 - containers
+- fsnotify
 - lens
 - linear
 - mtl
+- stm
+- time
 - total-map
 
 default-extensions:
 - RankNTypes
 - TemplateHaskell
 - FlexibleContexts
+- LambdaCase
+- FlexibleInstances
+- MultiParamTypeClasses
+- GeneralizedNewtypeDeriving
 
 library:
   source-dirs: src

@@ -6,8 +6,12 @@ packages:
 extra-deps:
 - total-map-0.1.3@sha256:081b917276323564e6d6ebaaf20c14d8ffc0a260cf3f29113c2577f774a272f1,983
 - semiring-num-1.6.0.4@sha256:ea73b7ec4980add625dedfe159dbeea9a37aa540a2a9df0f36263455b1654cc1,2943
+- GLFW-0.5.2.5@sha256:fa54e997076a6b415c43100830e9b6ab6827c8766aef80e66d598de9b2400b93
+- GLUtil-0.10.3@sha256:6b3eb89a15f0363647bc4112e007868440b1555e11bf3219e0e1ea884416e5e1,2523
+- hpp-0.6.2@sha256:aa75b0471c0a8f68ccf823da37ea88b4187829972dc951651805a3722293a001,1969
 
-
+nix:
+  packages: [ freeglut mesa libGLU x11 xorg.libXext xorg.libXxf86vm xorg.libX11 libGL zlib ]
 
 ghc-options:
   "$locals": -fwarn-incomplete-patterns -fwarn-unused-imports
