@@ -16,6 +16,7 @@ dependencies:
 - linear
 - mtl
 - stm
+- storable-tuple
 - time
 - total-map
 

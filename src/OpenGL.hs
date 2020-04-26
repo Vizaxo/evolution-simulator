@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.Trans
 import Data.Time.Clock
 import Foreign.Storable
+import Foreign.Storable.Tuple()
 import Graphics.GLUtil
 import Graphics.Rendering.OpenGL (($=))
 import System.Exit
@@ -26,13 +27,12 @@ data RenderState = RenderState
   }
 makeLenses ''RenderState
 
-screenRect :: [GL.Vector2 Float]
-screenRect = [ GL.Vector2 (-1.0) (-1.0)
-           , GL.Vector2 1.0 (-1.0)
-           , GL.Vector2 1.0 1.0
-           , GL.Vector2 1.0 1.0
-           , GL.Vector2 (-1.0) 1.0
-           , GL.Vector2 (-1.0) (-1.0)
+type Vertex = (GL.Vector2 Float, GL.Vector3 Float)
+
+vertices :: [Vertex]
+vertices = [ (GL.Vector2 0 0, GL.Vector3 1 0 0)
+           , (GL.Vector2 1 0, GL.Vector3 0 1 0)
+           , (GL.Vector2 0 1, GL.Vector3 0 0 1)
            ]
 
 makeWindow :: MonadIO m => m ()
@@ -64,12 +64,17 @@ initRenderState shaderDir = do
   windowSize <- GL.get GLFW.windowSize
 
   vao <- liftIO $ makeVAO $ do
-      let pos = GL.VertexArrayDescriptor 2 GL.Float
-            (fromIntegral $ sizeOf (undefined :: GL.Vector2 Float)) offset0
+      let stride = fromIntegral (sizeOf (undefined :: Vertex))
+          pos = GL.VertexArrayDescriptor 2 GL.Float stride offset0
+          col = GL.VertexArrayDescriptor 3 GL.Float stride
+            (offsetPtr (sizeOf (undefined :: GL.Vector2 Float)))
           posAttribute  = getAttrib shaderProg "pos"
-      vbo <- makeBuffer GL.ArrayBuffer screenRect
+          colAttribute  = getAttrib shaderProg "colIn"
+      vbo <- makeBuffer GL.ArrayBuffer vertices
       GL.vertexAttribArray posAttribute $= GL.Enabled
       GL.vertexAttribPointer posAttribute $= (GL.ToFloat, pos)
+      GL.vertexAttribArray colAttribute $= GL.Enabled
+      GL.vertexAttribPointer colAttribute $= (GL.ToFloat, col)
   GL.bindVertexArrayObject $= Just vao
 
   currentTime <- liftIO getCurrentTime
@@ -86,12 +91,14 @@ keyCallback _ (GLFW.SpecialKey GLFW.ESC) GLFW.Press
 keyCallback _ _ _ = pure ()
 
 updateWindowSize :: MonadIO m => TVar RenderState -> GL.Size -> m ()
-updateWindowSize s size = void $ runSTMStateT s $
+updateWindowSize s size = void $ runSTMStateT s $ do
   modify (set windowSize size)
+  liftIO (GL.viewport $= (GL.Position 0 0, size))
 
 makeShaderProgram :: FilePath -> IO ShaderProgram
 makeShaderProgram shaderDir = loadShaderProgram
   [ (GL.VertexShader, shaderDir ++ "/vertex.glsl")
+  , (GL.GeometryShader, shaderDir ++ "/geometry.glsl")
   , (GL.FragmentShader, shaderDir ++ "/fragment.glsl")
   ]
 
@@ -140,7 +147,7 @@ renderToScreen :: (MonadGet RenderState m, MonadIO m) => m ()
 renderToScreen = do
   GL.bindFramebuffer GL.Framebuffer $= GL.defaultFramebufferObject
   liftIO $ GL.clear [GL.ColorBuffer, GL.DepthBuffer]
-  liftIO $ GL.drawArrays GL.Triangles 0 (fromIntegral (length screenRect))
+  liftIO $ GL.drawArrays GL.Points 0 (fromIntegral (length vertices))
   liftIO $ GLFW.swapBuffers
 
 renderFrame :: (MonadState RenderState m, MonadIO m) => Float -> UTCTime -> m ()
@@ -158,7 +165,11 @@ renderFrame iTime t = do
       fps = 1.0 / dt
   modify (set lastRenderTime t)
 
+  let (GL.Size width height) = rs^.windowSize
+  safeSetUniform "scaleX" (0.2 :: GL.GLfloat)
+  safeSetUniform "scaleY" ((0.2 / fromIntegral height * fromIntegral width) :: GL.GLfloat)
   renderToScreen
 
-  liftIO $ putStr $ "FPS: " ++ show fps ++ "fps    \r"
+  liftIO $ putStr $ "FPS: " ++ show fps ++
+    "fps. Resolution: " ++ show width ++ "*" ++ show height ++ "    \r"
   liftIO $ hFlush stdout
