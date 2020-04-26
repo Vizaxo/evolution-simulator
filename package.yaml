@@ -43,6 +43,6 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    - -O0
+    - -O2
     dependencies:
     - evolution-simulator
