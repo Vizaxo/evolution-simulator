@@ -1,5 +1,6 @@
 module STMState where
 
+import Control.Lens
 import Control.Concurrent.STM
 import Control.Monad.Reader
 
@@ -60,3 +61,10 @@ runSTMStateT' s (STMStateT f) = do
   a <- runReaderT f t
   s <- liftIO $ readTVarIO t
   pure (a, s)
+
+lensState :: forall s t m a. MonadIO m => Lens' s t -> STMStateT t m a -> STMStateT s m a
+lensState lens ma = do
+  s <- get @s
+  (a, s') <- lift (runSTMStateT' (s^.lens) ma)
+  modify (set lens s')
+  pure a

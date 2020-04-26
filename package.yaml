@@ -28,6 +28,9 @@ default-extensions:
 - FlexibleInstances
 - MultiParamTypeClasses
 - GeneralizedNewtypeDeriving
+- AllowAmbiguousTypes
+- TypeApplications
+- ScopedTypeVariables
 
 library:
   source-dirs: src

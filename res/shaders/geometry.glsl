@@ -8,6 +8,8 @@ out vec3 colOut;
 
 uniform float scaleX;
 uniform float scaleY;
+uniform float offsetX;
+uniform float offsetY;
 
 
 float cos30 = 0.86602540378;
@@ -19,19 +21,16 @@ vec4 v3 = centre+vec4(0, -cos30, 0, 0);
 vec4 v4 = centre+vec4(-0.5, -0.5*cos30, 0, 0);
 vec4 v5 = centre+vec4(-0.5, 0.5*cos30, 0, 0);
 
+void setVertex(vec4 p) {
+     gl_Position = (p + vec4(offsetX, offsetY, 0, 0)) * vec4(scaleX, scaleY, 1, 1);
+     colOut = col[0];
+     EmitVertex();
+}
+
 void tri(vec4 a, vec4 b) {
-     gl_Position = centre * vec4(scaleX, scaleY, 1, 1);
-     colOut = col[0];
-     EmitVertex();
-
-     gl_Position = a * vec4(scaleX, scaleY, 1, 1);
-     colOut = col[0];
-     EmitVertex();
-
-     gl_Position = b * vec4(scaleX, scaleY, 1, 1);
-     colOut = col[0];
-     EmitVertex();
-
+     setVertex(centre);
+     setVertex(a);
+     setVertex(b);
      EndPrimitive();
 }
 void main(void) {

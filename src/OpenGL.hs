@@ -70,7 +70,8 @@ initRenderState shaderDir = do
             (offsetPtr (sizeOf (undefined :: GL.Vector2 Float)))
           posAttribute  = getAttrib shaderProg "pos"
           colAttribute  = getAttrib shaderProg "colIn"
-      vbo <- makeBuffer GL.ArrayBuffer vertices
+      vbo <- makeBuffer GL.ArrayBuffer ([] :: [Vertex])
+      GL.bindBuffer GL.ArrayBuffer $= Just vbo
       GL.vertexAttribArray posAttribute $= GL.Enabled
       GL.vertexAttribPointer posAttribute $= (GL.ToFloat, pos)
       GL.vertexAttribArray colAttribute $= GL.Enabled
@@ -83,12 +84,11 @@ initRenderState shaderDir = do
 postInit :: MonadIO m => TVar RenderState -> m ()
 postInit s = do
   GLFW.windowSizeCallback $= updateWindowSize s
-  GLFW.keyCallback $= keyCallback s
+  GLFW.keyCallback $= keyCallback
 
-keyCallback :: TVar RenderState -> GLFW.Key -> GLFW.KeyButtonState -> IO ()
-keyCallback _ (GLFW.SpecialKey GLFW.ESC) GLFW.Press
-  = exitSuccess
-keyCallback _ _ _ = pure ()
+keyCallback :: GLFW.Key -> GLFW.KeyButtonState -> IO ()
+keyCallback (GLFW.SpecialKey GLFW.ESC) GLFW.Press = exitSuccess
+keyCallback _ _ = pure ()
 
 updateWindowSize :: MonadIO m => TVar RenderState -> GL.Size -> m ()
 updateWindowSize s size = void $ runSTMStateT s $ do
@@ -143,15 +143,16 @@ bindTexture texture uniformName textureUnit = do
   texture2DWrap $= (GL.Repeated, GL.Repeat)
   safeSetUniform uniformName textureUnit
 
-renderToScreen :: (MonadGet RenderState m, MonadIO m) => m ()
-renderToScreen = do
+renderToScreen :: (MonadGet RenderState m, MonadIO m) => [Vertex] -> m ()
+renderToScreen vertices = do
   GL.bindFramebuffer GL.Framebuffer $= GL.defaultFramebufferObject
   liftIO $ GL.clear [GL.ColorBuffer, GL.DepthBuffer]
+  liftIO $ replaceBuffer GL.ArrayBuffer vertices
   liftIO $ GL.drawArrays GL.Points 0 (fromIntegral (length vertices))
   liftIO $ GLFW.swapBuffers
 
-renderFrame :: (MonadState RenderState m, MonadIO m) => Float -> UTCTime -> m ()
-renderFrame iTime t = do
+renderFrame :: (MonadState RenderState m, MonadIO m) => UTCTime -> [Vertex] -> m ()
+renderFrame t vertices = do
   GL.get GL.errors >>= \case
     [] -> pure ()
     es -> liftIO $ print es
@@ -166,9 +167,11 @@ renderFrame iTime t = do
   modify (set lastRenderTime t)
 
   let (GL.Size width height) = rs^.windowSize
-  safeSetUniform "scaleX" (0.2 :: GL.GLfloat)
-  safeSetUniform "scaleY" ((0.2 / fromIntegral height * fromIntegral width) :: GL.GLfloat)
-  renderToScreen
+  safeSetUniform "scaleX" (0.07 :: GL.GLfloat)
+  safeSetUniform "scaleY" ((0.07 / fromIntegral height * fromIntegral width) :: GL.GLfloat)
+  safeSetUniform "offsetX" (-10.0 :: GL.GLfloat)
+  safeSetUniform "offsetY" (-5.0 :: GL.GLfloat)
+  renderToScreen vertices
 
   liftIO $ putStr $ "FPS: " ++ show fps ++
     "fps. Resolution: " ++ show width ++ "*" ++ show height ++ "    \r"
