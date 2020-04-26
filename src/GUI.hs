@@ -20,6 +20,8 @@ import STMState
 
 data VisualisationState = VisualisationState
   { _simSpeed :: Int
+  , _quantity :: Quantity
+  , _showCells :: Bool
   }
   deriving Show
 makeLenses ''VisualisationState
@@ -31,7 +33,7 @@ mainOpenGL shaderDir = do
 
   rs <- initRenderState shaderDir
   let w = exampleWorld 20 10
-  let vs = VisualisationState 0
+  let vs = VisualisationState 0 Energy True
   rsTVar <- liftIO (newTVarIO rs)
   wTVar <- liftIO (newTVarIO w)
   vsTVar <- liftIO (newTVarIO vs)
@@ -46,7 +48,7 @@ mainOpenGL shaderDir = do
       w <- get @World
       vs <- get @VisualisationState
       (_, t) <- elapsedTime t0
-      renderFrame t (worldToVertices w)
+      renderFrame t (worldToVertices vs w)
       modify (((!! (2^(vs^.simSpeed)))) . iterate simulate)
       liftIO (threadDelay 5000)
 
@@ -56,20 +58,35 @@ keyCallback s (GLFW.CharKey '.') GLFW.Press
   = void $ runSTMStateT s (modify (over simSpeed (+1)))
 keyCallback s (GLFW.CharKey ',') GLFW.Press
   = void $ runSTMStateT s (modify (over simSpeed (max 0 . (subtract 1))))
+keyCallback s (GLFW.CharKey 'E') GLFW.Press
+  = void $ runSTMStateT s (modify (set quantity Energy))
+keyCallback s (GLFW.CharKey 'A') GLFW.Press
+  = void $ runSTMStateT s (modify (set quantity A))
+keyCallback s (GLFW.CharKey 'B') GLFW.Press
+  = void $ runSTMStateT s (modify (set quantity B))
+keyCallback s (GLFW.CharKey 'C') GLFW.Press
+  = void $ runSTMStateT s (modify (over showCells not))
 keyCallback _ _ _ = pure ()
 
-colourPoint :: Point -> GL.Vector3 Float
-colourPoint p = case p^.cell of
-  Nothing -> GL.Vector3 (x / 100) 0 1
+colourPoint :: VisualisationState -> Point -> GL.Vector3 Float
+colourPoint vs p | vs^.showCells = case p^.cell of
+  Nothing -> colour
   Just c -> GL.Vector3
     (realToFrac (c^.dna.membraneDiffusion))
     (realToFrac (c^.dna.properties.key Photosynthesiser) / 4)
     0
-  where x = realToFrac (p^.quantities.key Energy)
+                 | otherwise = colour
+  where
+    colour = (* realToFrac (p^.quantities.key (vs^.quantity) / 100)) <$> baseColour
+    baseColour = case vs^.quantity of
+      A -> GL.Vector3 0 0 1
+      B -> GL.Vector3 0 1 0
+      Energy -> GL.Vector3 1 0 0
 
-worldToVertices :: World -> [Vertex]
-worldToVertices w
-  = [ (GL.Vector2 (fromIntegral x') (fromIntegral y'), colourPoint ((w^.grid)!v))
+
+worldToVertices :: VisualisationState -> World -> [Vertex]
+worldToVertices vs w
+  = [ (GL.Vector2 (fromIntegral x') (fromIntegral y'), colourPoint vs ((w^.grid)!v))
     | x' <- [0..w^.width-1], y' <- [0..w^.height-1], let v = x'*^x + y'*^y]
 
 setDirty :: MonadIO m => TVar RenderState -> m ()
